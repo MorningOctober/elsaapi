@@ -1,0 +1,174 @@
+[project]
+name = "elsa-crawler"
+version = "2.0.0"
+description = "Modular ElsaPro document crawler with Redis & Kafka"
+authors = [
+    { name = "pTarepakdee", email = "paweena.tarepakdee@zeus.de" },
+    { name = "pSaejia", email = "piyawat.saejia@zeus.de" },
+    { name = "aNair", email = "aditya.nair@zeus.de" },
+]
+requires-python = ">=3.12.0,<3.13"
+readme = "README.md"
+dependencies = [
+    "python-dotenv>=1.0.0",
+    "playwright>=1.56.0",
+    "pyotp>=2.9.0",
+    "pydantic>=2.5.0",
+    "pydantic-settings>=2.1.0",
+    "fastapi>=0.115.0,<0.116",
+    "uvicorn[standard]>=0.30.0,<0.31",
+    "redis>=5.0.0,<6",
+    "aiokafka>=0.10.0",
+    "qdrant-client>=1.7.0",
+    "sentence-transformers>=2.2.0",
+    "httpx>=0.25.0",
+]
+
+[project.scripts]
+elsa-crawler = "elsa_crawler.cli.main:cli_main"
+
+[dependency-groups]
+# Workspace-wide development tools (shared across all members)
+dev = [
+    "ruff>=0.12.7,<0.15",
+    "mypy>=1.18.2",
+    "pytest>=8.4.1,<10",
+    "pytest-cov>=6.0.0,<8",
+    "black>=25.1.0,<26",
+]
+# Tools for linting only
+lint = ["ruff>=0.12.7,<0.15", "black>=25.1.0,<26", "flake8>=7.3.0,<8"]
+# Testing tools
+test = ["pytest>=8.4.1,<10", "pytest-cov>=6.0.0,<8", "coverage>=7.0.0,<8"]
+# Jupyter and analysis tools
+jupyter = ["jupyter>=1.1.1,<2", "ipykernel>=6.30.0,<7"]
+# Utility tools
+tools = ["pip", "pipdeptree"]
+
+
+[tool.uv]
+# Only include essential dev groups by default
+default-groups = ["dev"]
+
+# Global constraint dependencies for the entire workspace
+constraint-dependencies = [
+    "numpy>=2.2,<3",
+    "opencv-python>=4.12,<4.15",
+    "pydantic>=2.11,<3",
+]
+
+# [[tool.uv.index]]
+# name = "pypi"
+# url = "https://pypi.org/simple"
+
+# [[tool.uv.index]]
+# name = "pytorch-cu129"
+# url = "https://download.pytorch.org/whl/cu129"
+
+# [[tool.uv.index]]
+# name = "flashinfer-cu130"
+# url = "https://flashinfer.ai/whl/cu130"
+
+# [tool.uv.sources]
+# # Workspace-level source mapping for specialized packages
+# torch = { index = "pytorch-cu129" }
+# torchvision = { index = "pytorch-cu129" }
+# torchaudio = { index = "pytorch-cu129" }
+# flashinfer-python = { index = "flashinfer-cu130" }
+# flashinfer-cubin = { index = "flashinfer-cu130" }
+# flashinfer-jit-cache = { index = "flashinfer-cu130" }
+
+# MyPy Configuration (for workspace root)
+[tool.mypy]
+python_version = "3.12"
+# mypy_path = "apps/backend/src"
+namespace_packages = true
+explicit_package_bases = true
+
+# Strictness settings
+strict = true
+warn_return_any = true
+warn_unused_configs = true
+disallow_untyped_defs = true
+disallow_any_generics = true
+disallow_subclassing_any = true
+disallow_untyped_calls = true
+disallow_incomplete_defs = true
+check_untyped_defs = true
+disallow_untyped_decorators = true
+no_implicit_optional = true
+warn_redundant_casts = true
+warn_unused_ignores = true
+warn_no_return = true
+warn_unreachable = true
+strict_equality = true
+
+# Import discovery
+follow_imports = "normal"
+ignore_missing_imports = false
+
+# Output configuration
+show_error_codes = true
+show_error_context = true
+pretty = true
+color_output = true
+
+# Cache configuration
+cache_dir = ".mypy_cache"
+sqlite_cache = true
+incremental = true
+
+# Third-party library overrides (no type stubs available)
+[[tool.mypy.overrides]]
+module = [
+    "sentence_transformers.*",
+    "qdrant_client.*",
+    "faker.*",
+    "unstructured.*",
+    "langchain.*",
+    "langchain_openai.*",
+    "langchain_core.*",
+    "langchain_community.*",
+    "spacy.*",
+    "nltk.*",
+    "cv2.*",
+    "fitz.*",
+]
+ignore_missing_imports = true
+
+# Pyright/Pylance Configuration (for VSCode and type checking)
+[tool.pyright]
+venvPath = "."
+venv = ".venv"
+# extraPaths = ["apps/backend/src", "src"]
+typeCheckingMode = "strict"
+# include = ["apps/backend/src", "src"]
+exclude = [
+    "**/.archive/**",
+    "**/archive/**",
+    "**/docs/**",
+    "**/.venv/**",
+    "**/node_modules/**",
+    "**/__pycache__/**",
+    "**/*.pyc",
+    "**/typeshed-fallback/**",
+    "**/.vscode/**",
+    "**/prompts/**",
+    "**/tests/**",
+    "**/preprocessing/**",
+    "**/*.old/**",
+]
+
+reportMissingImports = true
+reportMissingTypeStubs = false
+reportUnknownParameterType = "warning"
+reportUnknownArgumentType = "warning"
+reportUnknownMemberType = "none"
+reportUnknownVariableType = "warning"
+reportPrivateUsage = "error"
+
+useLibraryCodeForTypes = true
+strictListInference = true
+strictDictionaryInference = true
+
+# Note: Ruff configuration is in ruff.toml (takes precedence over pyproject.toml)

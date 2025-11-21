@@ -1,0 +1,41 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+.venv/
+venv/
+.uv_cache/
+
+# Testing & Type Checking
+.mypy_cache/
+.pytest_cache/
+.ruff_cache/
+
+# IDEs & Tools
+.claude/
+.serena/
+.vscode/
+.idea/
+*.swp
+
+# Environment & Secrets (WICHTIG!)
+.env
+.env.local
+.env.*.local
+state.json
+
+# OS
+.DS_Store
+
+# Project specific
+archive/
+app/
+images/
+*.log
+.old/
+state-backups/
+fieldset_dump.json
+infomedia_tree_dump.json
+*.sqlite
+state.json
+.playwright-mcp/
