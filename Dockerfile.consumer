@@ -17,8 +17,10 @@ RUN pip install uv
 RUN uv pip install --system -r pyproject.toml
 
 # Copy application code
-COPY kafka_qdrant_consumer.py ./
-COPY .env* ./
+COPY elsa_crawler/ ./elsa_crawler/
 
-# Run the consumer
-CMD ["python", "kafka_qdrant_consumer.py"]
+# Set Python to unbuffered mode for Docker logs
+ENV PYTHONUNBUFFERED=1
+
+# Run the consumer via storage package
+CMD ["python", "-m", "elsa_crawler.storage"]

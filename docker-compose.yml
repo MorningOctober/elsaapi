@@ -98,6 +98,7 @@ services:
     # Qdrant startet sehr schnell (~1-2 Sekunden), daher nicht kritisch
 
   # Kafka Consumer für Qdrant - Liest aus Kafka und schreibt zu Qdrant
+  # Subscribes to all VIN-based topics matching pattern 'elsadocs_*'
   kafka-qdrant-consumer:
     build:
       context: .
@@ -110,12 +111,11 @@ services:
         condition: service_started  # service_healthy entfernt, da kein Health Check
     environment:
       KAFKA_BOOTSTRAP_SERVERS: kafka:29092  # Internal listener für Container-zu-Container
-      KAFKA_TOPIC: elsapro-documents
-      KAFKA_GROUP_ID: qdrant-consumer-group
-      QDRANT_HOST: qdrant
-      QDRANT_PORT: 6333
-      QDRANT_COLLECTION: elsapro_documents
+      # No KAFKA_TOPIC - consumer uses pattern subscription (elsadocs_*)
+      QDRANT_URL: http://qdrant:6333
       EMBEDDING_MODEL: sentence-transformers/all-MiniLM-L6-v2
+      # Optional: Set specific VIN if consumer should only process one VIN
+      # ELSA_VIN: WVWZZZ1KZAW123456
     networks:
       - elsapro-network
     restart: unless-stopped

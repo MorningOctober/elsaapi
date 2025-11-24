@@ -29,6 +29,7 @@ state.json
 
 # Project specific
 archive/
+.github/
 app/
 images/
 *.log
@@ -39,3 +40,4 @@ infomedia_tree_dump.json
 *.sqlite
 state.json
 .playwright-mcp/
+CLAUDE.md
