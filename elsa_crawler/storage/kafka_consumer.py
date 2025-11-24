@@ -15,6 +15,7 @@ from sentence_transformers import SentenceTransformer
 
 from elsa_crawler.config import ElsaConfig
 from elsa_crawler.models import DocumentData
+from elsa_crawler.storage.sanitizer import sanitize_html
 
 
 class KafkaQdrantConsumer:
@@ -171,18 +172,36 @@ class KafkaQdrantConsumer:
         # Ensure collection exists
         await self._ensure_collection(collection_name)
 
-        # Generate embedding (blocking, run in executor)
+        # Sanitize HTML content to clean Markdown text
         loop = asyncio.get_event_loop()
-        vector = await loop.run_in_executor(None, self._encode_content, self.embedding_model, doc.content)
+        sanitized_content = await loop.run_in_executor(None, sanitize_html, doc.content)
 
-        # Prepare payload
+        if not sanitized_content or len(sanitized_content.strip()) < 50:
+            print(f"⚠️  Skipping {doc.title}: Content too short after sanitization")
+            return
+
+        # Generate embedding with sanitized content (blocking, run in executor)
+        vector = await loop.run_in_executor(None, self._encode_content, self.embedding_model, sanitized_content)
+
+        # Prepare payload with sanitized content (remove html_preview from metadata)
+        clean_metadata = {k: v for k, v in doc.metadata.items() if k != "html_preview"}
+
         payload = {
             "vin": doc.vin,
             "category": doc.category,
             "title": doc.title,
-            "content": doc.content[:5000],  # Limit for Qdrant
+            "content": sanitized_content[:5000],  # Limit for Qdrant
             "url": doc.url or "",
-            "metadata": doc.metadata,
+            "metadata": {
+                **clean_metadata,
+                "sanitization": {
+                    "original_length": len(doc.content),
+                    "sanitized_length": len(sanitized_content),
+                    "reduction_percent": round((1 - len(sanitized_content) / len(doc.content)) * 100, 2)
+                    if len(doc.content) > 0
+                    else 0,
+                },
+            },
             "timestamp": doc.timestamp,
         }
 
@@ -197,7 +216,20 @@ class KafkaQdrantConsumer:
 
         await self.qdrant_client.upsert(collection_name=collection_name, points=[point])
 
-        print(f"✅ Indexed to {collection_name}: {doc.title}")
+        # Safe metadata access with type checking
+        metadata = payload.get("metadata")
+        reduction: float = 0.0
+        if isinstance(metadata, dict) and "sanitization" in metadata:
+            sanitization = metadata["sanitization"]
+            if isinstance(sanitization, dict):
+                reduction_value = sanitization.get("reduction_percent", 0.0)  # type: ignore[misc]
+                if isinstance(reduction_value, (int, float)):
+                    reduction = float(reduction_value)
+
+        print(
+            f"✅ Indexed to {collection_name}: {doc.title} "
+            f"(sanitized: {len(doc.content)}→{len(sanitized_content)} chars, -{reduction}%)"
+        )
 
     def _get_collection_name(self, vin: str, category: str) -> str:
         """

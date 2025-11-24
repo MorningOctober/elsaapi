@@ -206,7 +206,9 @@ class CrawlerWorker:
                 """)
                 if has_docs:
                     self.content_frame = frame
-                    print(f"[Worker {self.worker_id}] 📄 Content frame refreshed: {frame.url}")
+                    print(
+                        f"[Worker {self.worker_id}] 📄 Content frame refreshed: {frame.url}"
+                    )
                     break
             except Exception:
                 continue
@@ -295,7 +297,9 @@ class CrawlerWorker:
                 print(f"[Worker {self.worker_id}] ⚠️  Could not click category {target}")
             return bool(clicked)
         except Exception as exc:
-            print(f"[Worker {self.worker_id}] ⚠️  Error clicking category {target}: {exc}")
+            print(
+                f"[Worker {self.worker_id}] ⚠️  Error clicking category {target}: {exc}"
+            )
             return False
 
     async def _extract_documents_from_content(self, category: Category) -> int:
@@ -325,7 +329,11 @@ class CrawlerWorker:
                 await self._refresh_document_frame()
 
                 doc = await DocumentExtractor.extract_document_content(
-                    self.page, self.document_frame, vorgangs_nr, category.id, category.name
+                    self.page,
+                    self.document_frame,
+                    vorgangs_nr,
+                    category.id,
+                    category.name,
                 )
 
                 if doc:
@@ -375,6 +383,7 @@ class CrawlerWorker:
 
     async def _extract_document_list(self) -> list[dict[str, str]]:
         """Extract document links from content frame or any frame."""
+
         async def _eval(frame: Frame) -> list[dict[str, str]]:
             result = await frame.evaluate("""
                 () => {

@@ -27,6 +27,7 @@ class KafkaProducer:
 
     async def connect(self) -> None:
         """Start Kafka producer."""
+
         def serialize_value(value: Mapping[str, Any]) -> bytes:
             return json.dumps(value, ensure_ascii=False).encode("utf-8")
 
@@ -75,7 +76,6 @@ class KafkaProducer:
     def _topic_for_vin(self, vin: Optional[str]) -> str:
         suffix = (vin or "unknown").lower()
         return f"elsadocs_{suffix}"
-
 
     async def flush(self) -> None:
         """Flush pending messages."""

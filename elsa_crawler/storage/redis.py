@@ -68,7 +68,11 @@ class RedisStorage:
         await cast(Awaitable[int], self.client.sadd(f"vin:{doc.vin}:docs", key))
 
     async def save_fieldsets(
-        self, vin: str, customer: dict[str, Any], vehicle: dict[str, Any], message: dict[str, Any] | None = None
+        self,
+        vin: str,
+        customer: dict[str, Any],
+        vehicle: dict[str, Any],
+        message: dict[str, Any] | None = None,
     ) -> None:
         """
         Save customer/vehicle fieldsets for a VIN.
@@ -85,7 +89,9 @@ class RedisStorage:
             "message": message,
         }
         key = f"vin:{vin}:fieldset"
-        await self.client.set(key, json.dumps(payload, ensure_ascii=False), ex=86400 * 30)
+        await self.client.set(
+            key, json.dumps(payload, ensure_ascii=False), ex=86400 * 30
+        )
 
     async def get_document(self, vin: str, category: str) -> Optional[DocumentData]:
         """
