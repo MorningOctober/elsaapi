@@ -106,6 +106,7 @@ class KafkaQdrantConsumer:
     async def _ensure_collection(self, collection_name: str) -> None:
         """
         Create Qdrant collection if it doesn't exist.
+        Always checks current state (no caching) to handle external deletions.
 
         Args:
             collection_name: Name of the collection to create (e.g., 'elsadocs_vin_category')
@@ -113,10 +114,7 @@ class KafkaQdrantConsumer:
         if not self.qdrant_client:
             return
 
-        # Check cache first
-        if collection_name in self._collection_cache:
-            return
-
+        # Always check if collection exists (no cache to avoid stale state)
         collections = await self.qdrant_client.get_collections()
         collection_names = [c.name for c in collections.collections]
 
@@ -130,11 +128,6 @@ class KafkaQdrantConsumer:
                 ),
             )
             print(f"✅ Collection created: {collection_name}")
-        else:
-            print(f"✅ Collection exists: {collection_name}")
-
-        # Add to cache
-        self._collection_cache.add(collection_name)
 
     async def consume(self) -> None:
         """Consume messages from Kafka and index to Qdrant."""
@@ -182,7 +175,7 @@ class KafkaQdrantConsumer:
         # Generate collection name based on VIN and category
         collection_name = self._get_collection_name(doc.vin, doc.category)
 
-        # Ensure collection exists
+        # Ensure collection exists (always check, no caching)
         await self._ensure_collection(collection_name)
 
         # Sanitize HTML content to clean Markdown text
@@ -227,7 +220,18 @@ class KafkaQdrantConsumer:
             payload=payload,
         )
 
-        await self.qdrant_client.upsert(collection_name=collection_name, points=[point])
+        # Upsert with Try-Catch for auto-recovery if collection was deleted externally
+        try:
+            await self.qdrant_client.upsert(collection_name=collection_name, points=[point])
+        except Exception as exc:
+            # Handle case where collection was deleted after _ensure_collection check
+            if "doesn't exist" in str(exc).lower() or "not found" in str(exc).lower():
+                print(f"⚠️  Collection deleted externally, recreating: {collection_name}")
+                await self._ensure_collection(collection_name)
+                # Retry upsert after recreation
+                await self.qdrant_client.upsert(collection_name=collection_name, points=[point])
+            else:
+                raise
 
         # Safe metadata access with type checking
         metadata = payload.get("metadata")

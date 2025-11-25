@@ -65,11 +65,12 @@ class CategoryExtractor:
                         });
                     }
                     
-                    // Recursively process children
+                    // ALWAYS recursively process children (even if parent is emptyPage)
                     const childUl = li.querySelector(':scope > ul');
                     if (childUl) {
                         const childLis = childUl.querySelectorAll(':scope > li');
                         childLis.forEach(childLi => {
+                            // Use currentPath even if parent wasn't added (emptyPage)
                             parseNode(childLi, currentPath, depth + 1);
                         });
                     }

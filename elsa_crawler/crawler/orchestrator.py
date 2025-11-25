@@ -17,6 +17,7 @@ from elsa_crawler.extractors.fieldsets import FieldsetExtractor
 from elsa_crawler.extractors.vehicle_history import VehicleHistoryExtractor
 from elsa_crawler.models import Category, CrawlerStats, Credentials
 from elsa_crawler.storage.kafka_producer import KafkaProducer
+from elsa_crawler.storage.qdrant_cleaner import QdrantCleanupService
 from elsa_crawler.storage.redis import RedisStorage
 
 
@@ -52,6 +53,10 @@ class CrawlerOrchestrator:
         print(
             f"\n🚀 Initializing Crawler Orchestrator ({self.config.max_workers} workers)"
         )
+
+        # Clear existing VIN data if configured (default: True)
+        if self.config.clear_before_crawl:
+            await self._clear_vin_data()
 
         # Connect to Redis
         try:
@@ -267,6 +272,57 @@ class CrawlerOrchestrator:
             await self.redis.disconnect()
 
         print("✅ Cleanup complete")
+
+    async def _clear_vin_data(self) -> None:
+        """
+        Clear all existing VIN data from Redis and Qdrant.
+
+        This ensures fresh data on each crawl by removing:
+        - Redis: All documents + metadata for this VIN
+        - Qdrant: All collections matching elsadocs_{vin}_*
+
+        Called before initialize() if config.clear_before_crawl is True.
+        """
+        print(f"\n🗑️  Clearing existing data for VIN: {self.vin}")
+
+        # Clear Redis data
+        print("\n📦 Clearing Redis data...")
+        redis_cleaner = RedisStorage(self.config)
+        try:
+            await redis_cleaner.connect()
+            stats = await redis_cleaner.clear_vin_data(self.vin)
+            print(
+                f"   ✅ Redis cleared: {stats['documents_deleted']} documents, "
+                f"{stats['metadata_keys_deleted']} metadata keys"
+            )
+        except Exception as exc:
+            print(f"   ⚠️  Redis cleanup failed: {exc}")
+        finally:
+            await redis_cleaner.disconnect()
+
+        # Clear Qdrant collections
+        print("\n🔍 Clearing Qdrant collections...")
+        qdrant_cleaner = QdrantCleanupService(self.config)
+        try:
+            await qdrant_cleaner.connect()
+            stats = await qdrant_cleaner.clear_vin_collections(self.vin)
+            if stats["collections_deleted"] > 0:
+                print(
+                    f"   ✅ Qdrant cleared: {stats['collections_deleted']} collections"
+                )
+                for coll in stats["deleted_collections"]:
+                    print(f"      • {coll}")
+            else:
+                print(f"   ℹ️  No Qdrant collections found for VIN {self.vin}")
+
+            if stats["errors"]:
+                print(f"   ⚠️  {len(stats['errors'])} errors during cleanup")
+        except Exception as exc:
+            print(f"   ⚠️  Qdrant cleanup failed: {exc}")
+        finally:
+            await qdrant_cleaner.disconnect()
+
+        print(f"\n✅ VIN data cleanup complete for {self.vin}\n")
 
     async def __aenter__(self) -> "CrawlerOrchestrator":
         """Async context manager entry."""

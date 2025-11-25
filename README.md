@@ -38,12 +38,14 @@ Set these in `.env`:
 - `API_HOST` / `API_PORT` – defaults `0.0.0.0:8000`.
 
 ## Running Services
-Start dependencies (Redis, Kafka, Qdrant, consumer, Kafka UI):
+Start dependencies (Redis, Kafka, Qdrant, consumer, Kafka UI, RedisInsight):
 ```bash
-docker-compose up -d redis kafka kafka-ui qdrant kafka-qdrant-consumer
+docker-compose up -d redis redisinsight kafka kafka-ui qdrant kafka-qdrant-consumer
 ```
-Kafka UI: http://localhost:8080  
-Qdrant Dashboard: http://localhost:6333/dashboard
+**Web Interfaces:**
+- Kafka UI: http://localhost:8080  
+- Qdrant Dashboard: http://localhost:6333/dashboard  
+- RedisInsight: http://localhost:5540
 
 ## Run the Crawler (CLI)
 ```bash

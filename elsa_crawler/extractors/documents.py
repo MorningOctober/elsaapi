@@ -41,6 +41,7 @@ class DocumentExtractor:
                 return ExtractedDocument(
                     category_id=category_id,
                     category_name=category_name,
+                    vorgangs_nr=vorgangs_nr,
                     title=vorgangs_nr,
                     content=content["text"],
                     url=page.url,
@@ -62,6 +63,7 @@ class DocumentExtractor:
             return ExtractedDocument(
                 category_id=category_id,
                 category_name=category_name,
+                vorgangs_nr=vorgangs_nr,
                 title=vorgangs_nr,
                 content=best_content["text"],
                 url=page.url,

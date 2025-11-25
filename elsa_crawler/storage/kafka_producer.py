@@ -86,17 +86,15 @@ class KafkaProducer:
         # Key: VIN:history for partitioning
         key = f"{history['vin']}:history"
 
-        # Wrap in message envelope
+        # Send complete VehicleHistory object directly (no envelope needed)
         message = {
             "type": "vehicle_history",
             "vin": history["vin"],
-            "timestamp": history["extraction_timestamp"],
-            "status": history["extraction_status"],
-            "metadata": {
-                "total_entries": history["total_entries"],
-                "successful": history["successful_entries"],
-                "failed": history["failed_entries"],
-            },
+            "extraction_timestamp": history["extraction_timestamp"],
+            "extraction_status": history["extraction_status"],
+            "total_entries": history["total_entries"],
+            "successful_entries": history["successful_entries"],
+            "failed_entries": history["failed_entries"],
             "entries": history["entries"],
         }
 

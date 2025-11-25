@@ -21,7 +21,9 @@ class VehicleHistoryExtractor:
     """Extracts vehicle service history from ElsaPro Fahrzeughistorie section."""
 
     @staticmethod
-    async def extract_complete_history(browser_manager: BrowserManager, vin: str) -> VehicleHistory:
+    async def extract_complete_history(
+        browser_manager: BrowserManager, vin: str
+    ) -> VehicleHistory:
         """
         Extract complete vehicle history.
 
@@ -39,7 +41,9 @@ class VehicleHistoryExtractor:
             raise RuntimeError("Browser page not available")
 
         # Navigate to Fahrzeughistorie
-        history_page = await VehicleHistoryExtractor._navigate_to_history(browser_manager.page)
+        history_page = await VehicleHistoryExtractor._navigate_to_history(
+            browser_manager.page
+        )
 
         # Get iframe containing history table
         history_frame = await VehicleHistoryExtractor._get_history_frame(history_page)
@@ -162,7 +166,9 @@ class VehicleHistoryExtractor:
 
             # Wait for grid to appear in the frame
             print("  ⏳ Waiting for grid...")
-            await history_frame.wait_for_selector('[role="grid"]', state="visible", timeout=10000)
+            await history_frame.wait_for_selector(
+                '[role="grid"]', state="visible", timeout=10000
+            )
             print("  ✓ Grid loaded successfully")
 
             return history_frame
@@ -232,7 +238,9 @@ class VehicleHistoryExtractor:
             for idx, row in enumerate(rows):
                 try:
                     # Extract entry type from first .col-xs-2 span
-                    entry_type_text = await row.locator("td .col-xs-2 span.text-bold").first.inner_text()
+                    entry_type_text = await row.locator(
+                        "td .col-xs-2 span.text-bold"
+                    ).first.inner_text()
 
                     entry_type = entry_type_text.strip()
 
@@ -272,12 +280,20 @@ class VehicleHistoryExtractor:
         """
         # Extract basic fields
         date = await VehicleHistoryExtractor._extract_field_value(row, "Annahmetermin:")
-        mileage = await VehicleHistoryExtractor._extract_field_value(row, "Laufleistung:")
-        order_num = await VehicleHistoryExtractor._extract_field_value(row, "Auftrags-Nr")
-        service_proof = await VehicleHistoryExtractor._extract_field_value(row, "Service-Nachweis:")
+        mileage = await VehicleHistoryExtractor._extract_field_value(
+            row, "Laufleistung:"
+        )
+        order_num = await VehicleHistoryExtractor._extract_field_value(
+            row, "Auftrags-Nr"
+        )
+        service_proof = await VehicleHistoryExtractor._extract_field_value(
+            row, "Service-Nachweis:"
+        )
 
         # Extract additional work table
-        additional_work = await VehicleHistoryExtractor._extract_table(row, "Zusatzarbeiten")
+        additional_work = await VehicleHistoryExtractor._extract_table(
+            row, "Zusatzarbeiten"
+        )
 
         # Extract remarks/description table (fallback structure)
         remarks = await VehicleHistoryExtractor._extract_generic_table(row)
@@ -304,8 +320,12 @@ class VehicleHistoryExtractor:
         """
         # Extract basic fields
         date = await VehicleHistoryExtractor._extract_field_value(row, "Annahmetermin:")
-        mileage = await VehicleHistoryExtractor._extract_field_value(row, "Laufleistung:")
-        order_num = await VehicleHistoryExtractor._extract_field_value(row, "Auftrags-Nr")
+        mileage = await VehicleHistoryExtractor._extract_field_value(
+            row, "Laufleistung:"
+        )
+        order_num = await VehicleHistoryExtractor._extract_field_value(
+            row, "Auftrags-Nr"
+        )
         ba_id = await VehicleHistoryExtractor._extract_field_value(row, "BA-ID:")
 
         # Extract complaint details from table
@@ -336,16 +356,26 @@ class VehicleHistoryExtractor:
         """
         # Extract basic fields
         date = await VehicleHistoryExtractor._extract_field_value(row, "Annahmetermin:")
-        mileage = await VehicleHistoryExtractor._extract_field_value(row, "Laufleistung:")
-        order_num = await VehicleHistoryExtractor._extract_field_value(row, "Auftrags-Nr")
-        invoice_num = await VehicleHistoryExtractor._extract_field_value(row, "Rechnungs-Nr")
+        mileage = await VehicleHistoryExtractor._extract_field_value(
+            row, "Laufleistung:"
+        )
+        order_num = await VehicleHistoryExtractor._extract_field_value(
+            row, "Auftrags-Nr"
+        )
+        invoice_num = await VehicleHistoryExtractor._extract_field_value(
+            row, "Rechnungs-Nr"
+        )
         remark = await VehicleHistoryExtractor._extract_field_value(row, "Anmerk.")
 
         # Extract work positions
-        work_positions = await VehicleHistoryExtractor._extract_table(row, "Arbeitsposition")
+        work_positions = await VehicleHistoryExtractor._extract_table(
+            row, "Arbeitsposition"
+        )
 
         # Extract parts positions
-        parts_positions = await VehicleHistoryExtractor._extract_table(row, "Teileposition")
+        parts_positions = await VehicleHistoryExtractor._extract_table(
+            row, "Teileposition"
+        )
 
         return InvoiceEntry(
             acceptance_date=date,
@@ -405,7 +435,9 @@ class VehicleHistoryExtractor:
 
             # Find the table within the parent container of this section
             # Structure: <div ng-if="repair.showX"> contains both title div and table div
-            table = section.locator("xpath=ancestor::div[1]//table.embedded-table").first
+            table = section.locator(
+                "xpath=ancestor::div[1]//table.embedded-table"
+            ).first
 
             # Extract headers
             headers: list[str] = await table.locator("thead th").all_inner_texts()  # type: ignore[misc]
@@ -416,7 +448,10 @@ class VehicleHistoryExtractor:
             results: list[dict[str, str]] = []
             for data_row in data_rows:
                 cells: list[str] = await data_row.locator("td").all_inner_texts()  # type: ignore[misc]
-                row_dict = {headers[i]: cells[i].strip() for i in range(min(len(headers), len(cells)))}
+                row_dict = {
+                    headers[i]: cells[i].strip()
+                    for i in range(min(len(headers), len(cells)))
+                }
                 results.append(row_dict)
 
             return results

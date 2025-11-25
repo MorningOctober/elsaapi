@@ -46,6 +46,17 @@ class ElsaConfig(BaseSettings):
 
     # Crawler settings
     max_workers: int = Field(default=3, ge=1, le=10)
+    max_documents_per_category: int = Field(
+        default=200,
+        ge=1,
+        le=500,
+        description="Maximum documents to extract per category (1-500)",
+    )
+
+    clear_before_crawl: bool = Field(
+        default=True,
+        description="Clear existing VIN data before crawling for fresh data (recommended)",
+    )
     headless: bool = Field(default=True)
     timeout: int = Field(default=30000, ge=5000)  # milliseconds
 

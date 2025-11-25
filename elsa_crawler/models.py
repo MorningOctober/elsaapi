@@ -129,6 +129,7 @@ class DocumentData(BaseModel):
 
     vin: str = Field(..., description="Vehicle VIN")
     category: str = Field(..., description="Document category")
+    vorgangs_nr: str = Field(..., description="Vorgangs number (unique per category)")
     title: str = Field(..., description="Document title")
     content: str = Field(..., description="Document content/text")
     url: Optional[str] = Field(default=None, description="Source URL")
@@ -207,6 +208,7 @@ class ExtractedDocument(BaseModel):
 
     category_id: str
     category_name: str
+    vorgangs_nr: str  # Document unique identifier (vorgangs number)
     title: str
     content: str
     url: Optional[str] = None
@@ -239,6 +241,46 @@ class ApiResponse(BaseModel):
     success: bool
     message: str
     data: Optional[dict[str, Any]] = None
+
+
+class SearchDocumentsRequest(BaseModel):
+    """Request to search documents with RediSearch."""
+
+    query: str = Field(default="*", description="Search query for content")
+    vin: Optional[str] = Field(default=None, description="Filter by VIN")
+    category: Optional[str] = Field(default=None, description="Filter by category")
+    limit: int = Field(default=10, ge=1, le=100, description="Max results")
+    offset: int = Field(default=0, ge=0, description="Pagination offset")
+    sort_by: Optional[str] = Field(
+        default=None, description="Sort field (e.g., 'timestamp')"
+    )
+    sort_desc: bool = Field(default=True, description="Sort descending")
+
+
+class SearchHistoryRequest(BaseModel):
+    """Request to search vehicle history with RediSearch."""
+
+    vin: Optional[str] = Field(default=None, description="Filter by VIN")
+    entry_type: Optional[str] = Field(
+        default=None, description="Filter by type (ServicePlan, Complaint, Invoice)"
+    )
+    min_mileage: Optional[int] = Field(
+        default=None, ge=0, description="Minimum mileage"
+    )
+    max_mileage: Optional[int] = Field(
+        default=None, ge=0, description="Maximum mileage"
+    )
+    workshop: Optional[str] = Field(default=None, description="Filter by workshop name")
+    limit: int = Field(default=10, ge=1, le=100, description="Max results")
+
+
+class SearchResponse(BaseModel):
+    """Response for search queries."""
+
+    total: int = Field(..., description="Total matching results")
+    results: list[dict[str, Any]] = Field(..., description="Search results")
+    query: str = Field(..., description="Original query")
+    filters: dict[str, Any] = Field(default_factory=dict, description="Applied filters")
 
 
 # ============================================================================

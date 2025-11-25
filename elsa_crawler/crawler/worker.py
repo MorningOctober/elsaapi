@@ -206,9 +206,7 @@ class CrawlerWorker:
                 """)
                 if has_docs:
                     self.content_frame = frame
-                    print(
-                        f"[Worker {self.worker_id}] 📄 Content frame refreshed: {frame.url}"
-                    )
+                    print(f"[Worker {self.worker_id}] 📄 Content frame refreshed: {frame.url}")
                     break
             except Exception:
                 continue
@@ -224,9 +222,7 @@ class CrawlerWorker:
             print(f"[Worker {self.worker_id}] ⚠️  No navigation frame")
             return []
 
-        categories = await CategoryExtractor.collect_all_categories(
-            self.navigation_frame
-        )
+        categories = await CategoryExtractor.collect_all_categories(self.navigation_frame)
         self.all_categories = categories
 
         print(f"[Worker {self.worker_id}] 📁 Collected {len(categories)} categories")
@@ -235,33 +231,48 @@ class CrawlerWorker:
     async def crawl_category(self, category: Category) -> int:
         """
         Crawl a single category and extract documents.
+        If category has children in navigation tree, crawl them recursively.
 
         Args:
             category: Category to crawl
 
         Returns:
-            Number of documents extracted
+            Number of documents extracted (including from subcategories)
         """
         if category.id in self.visited_categories:
             return 0
 
         self.visited_categories.add(category.id)
+        indent = "  " * category.depth
 
-        print(f"[Worker {self.worker_id}] 📂 Crawling: {category.name}")
+        print(f"[Worker {self.worker_id}] {indent}📂 Crawling: {category.name}")
 
         # Navigate by clicking category in navigation frame
         clicked = await self._click_category(category)
         await self.page.wait_for_timeout(800)
         if not clicked:
-            print(f"[Worker {self.worker_id}] ⚠️  Could not navigate to {category.name}")
+            print(f"[Worker {self.worker_id}] {indent}⚠️  Could not navigate to {category.name}")
             return 0
+
         # Refresh content frame after navigation
         await self._refresh_content_frame()
         if not self.content_frame:
-            print(f"[Worker {self.worker_id}] ⚠️  No content frame after navigation")
+            print(f"[Worker {self.worker_id}] {indent}⚠️  No content frame after navigation")
             return 0
 
+        # Extract documents from current category
         documents_extracted = await self._extract_documents_from_content(category)
+
+        # Check for subcategories in navigation tree (after clicking parent)
+        subcategories = await self._find_visible_subcategories(category)
+
+        if subcategories:
+            print(f"[Worker {self.worker_id}] {indent}🔍 Found {len(subcategories)} subcategory(ies)")
+            for subcat in subcategories:
+                sub_docs = await self.crawl_category(subcat)
+                documents_extracted += sub_docs
+        elif documents_extracted == 0:
+            print(f"[Worker {self.worker_id}] {indent}ℹ️  No documents or subcategories found")
 
         self.stats.categories_crawled += 1
 
@@ -297,23 +308,182 @@ class CrawlerWorker:
                 print(f"[Worker {self.worker_id}] ⚠️  Could not click category {target}")
             return bool(clicked)
         except Exception as exc:
-            print(
-                f"[Worker {self.worker_id}] ⚠️  Error clicking category {target}: {exc}"
-            )
+            print(f"[Worker {self.worker_id}] ⚠️  Error clicking category {target}: {exc}")
             return False
 
+    async def _find_visible_subcategories(self, parent: Category) -> list[Category]:
+        """Find direct child categories of a parent in the navigation tree.
+
+        After clicking a parent category, its children become visible in the tree.
+        This method extracts them from the DOM.
+
+        Args:
+            parent: Parent category to find children for
+
+        Returns:
+            List of child Category objects
+        """
+        if not self.navigation_frame:
+            return []
+
+        try:
+            # Find the parent's <li> and extract direct children
+            result = await self.navigation_frame.evaluate(
+                """
+                (parentName) => {
+                    const results = [];
+                    const allLis = document.querySelectorAll('li');
+                    const debug = { 
+                        totalLis: allLis.length, 
+                        foundParent: false,
+                        searchingFor: parentName,
+                        sampleChildren: []
+                    };
+                    
+                    // Find parent LI by matching link text
+                    let parentLi = null;
+                    for (const li of allLis) {
+                        const link = li.querySelector(':scope > a');
+                        if (!link) continue;
+                        
+                        const linkText = (link.textContent || '').replace(/^image/i, '').trim();
+                        if (linkText === parentName) {
+                            debug.foundParent = true;
+                            debug.parentHasUl = !!li.querySelector(':scope > ul');
+                            parentLi = li;
+                            break;
+                        }
+                    }
+                    
+                    if (!parentLi) {
+                        return { children: results, debug };
+                    }
+                    
+                    // Find direct child <ul>
+                    const childUl = parentLi.querySelector(':scope > ul');
+                    if (!childUl) {
+                        debug.noChildUl = true;
+                        return { children: results, debug };
+                    }
+                    
+                    // Get direct child <li> elements
+                    const childLis = childUl.querySelectorAll(':scope > li');
+                    debug.childCount = childLis.length;
+                    
+                    childLis.forEach((childLi, idx) => {
+                        const link = childLi.querySelector(':scope > a');
+                        if (!link) return;
+                        
+                        let name = '';
+                        for (const node of link.childNodes) {
+                            if (node.nodeType === Node.TEXT_NODE) {
+                                name += (node.textContent || '').trim();
+                            }
+                        }
+                        if (!name) {
+                            name = (link.textContent || '').trim();
+                        }
+                        name = name.replace(/^image/i, '').trim();
+                        
+                        const href = link.getAttribute('href') || '';
+                        
+                        // Sample first 3 children for debugging
+                        if (idx < 3) {
+                            debug.sampleChildren.push({ name, href: href.substring(0, 50) });
+                        }
+                        
+                        if (!name) return;
+                        
+                        // Skip emptyPage links (but count them for debug)
+                        if (href.includes('emptyPage')) {
+                            debug.emptyPageCount = (debug.emptyPageCount || 0) + 1;
+                            return;
+                        }
+                        
+                        // Extract levelCode
+                        const levelMatch = href.match(/levelCode=([^&]+)/);
+                        const levelCode = levelMatch ? levelMatch[1] : '';
+                        
+                        if (!levelCode) {
+                            debug.noLevelCodeCount = (debug.noLevelCodeCount || 0) + 1;
+                            return;
+                        }
+                        
+                        results.push({
+                            id: levelCode,
+                            name: name,
+                            url: href,
+                            hasChildren: !!childLi.querySelector(':scope > ul')
+                        });
+                    });
+                    
+                    debug.validChildrenFound = results.length;
+                    return { children: results, debug };
+                }
+                """,
+                parent.name,
+            )
+
+            children_data = result.get("children", [])
+            debug_info = result.get("debug", {})
+
+            # Log debug information
+            if debug_info.get("sampleChildren"):
+                print(f"[Worker {self.worker_id}] 🔍 Sample children: {debug_info['sampleChildren']}")
+            print(
+                f"[Worker {self.worker_id}] 🔍 Subcategory search for '{parent.name}': "
+                + f"found={debug_info.get('foundParent', False)}, "
+                + f"childLis={debug_info.get('childCount', 0)}, "
+                + f"valid={debug_info.get('validChildrenFound', 0)}, "
+                + f"emptyPage={debug_info.get('emptyPageCount', 0)}, "
+                + f"noLevelCode={debug_info.get('noLevelCodeCount', 0)}"
+            )
+
+            # Convert to Category objects
+            categories: list[Category] = []
+            for child_data in children_data:
+                categories.append(
+                    Category(
+                        id=child_data["id"],
+                        name=child_data["name"],
+                        url=child_data["url"],
+                        parent_id=parent.id,
+                        depth=parent.depth + 1,
+                        has_children=child_data["hasChildren"],
+                    )
+                )
+
+            return categories
+
+        except Exception as exc:
+            print(f"[Worker {self.worker_id}] ⚠️  Failed to find subcategories for {parent.name}: {exc}")
+            return []
+
     async def _extract_documents_from_content(self, category: Category) -> int:
-        """Extract document links from content frame and process them."""
+        """Extract document links from content frame and process them.
+
+        Args:
+            category: Category being crawled
+
+        Returns:
+            Number of documents extracted
+        """
         if not self.content_frame:
             await self._refresh_content_frame()
         if not self.content_frame:
             return 0
 
+        indent = "  " * category.depth
+
         try:
             doc_links = await self._extract_document_list()
 
+            if doc_links:
+                print(f"[Worker {self.worker_id}] {indent}📄 Found {len(doc_links)} document(s)")
+
             count = 0
-            for idx, doc_link in enumerate(doc_links[:50], 1):  # Limit per category
+            max_docs = self.config.max_documents_per_category
+            for idx, doc_link in enumerate(doc_links[:max_docs], 1):
                 vorgangs_nr = doc_link.get("vorgangs_nr", "")
 
                 if vorgangs_nr in self.visited_documents:
@@ -337,7 +507,7 @@ class CrawlerWorker:
                 )
 
                 if doc:
-                    await self._save_document(doc)
+                    await self._save_document(doc, category.depth)
                     count += 1
                     self.stats.documents_extracted += 1
 
@@ -349,7 +519,7 @@ class CrawlerWorker:
             return count
 
         except Exception as exc:
-            print(f"[Worker {self.worker_id}] ⚠️  Document extraction failed: {exc}")
+            print(f"[Worker {self.worker_id}] {indent}⚠️  Document extraction failed: {exc}")
             return 0
 
     async def _click_document_link(self, vorgangs_nr: str) -> bool:
@@ -443,32 +613,40 @@ class CrawlerWorker:
             except Exception:
                 continue
 
-    async def _save_document(self, doc: ExtractedDocument) -> None:
-        """Save extracted document to Redis and Kafka."""
+    async def _save_document(self, doc: ExtractedDocument, depth: int = 0) -> None:
+        """Save extracted document to Redis and Kafka.
+
+        Args:
+            doc: Extracted document to save
+            depth: Current recursion depth (for logging)
+        """
         doc_data = DocumentData(
             vin=self.config.vin or "UNKNOWN",
             category=doc.category_name,
+            vorgangs_nr=doc.vorgangs_nr,
             title=doc.title,
             content=doc.content,
             url=doc.url,
             metadata=doc.metadata,
         )
 
+        indent = "  " * depth
+
         # Save to Redis
         if self.redis:
             try:
                 await self.redis.save_document(doc_data)
             except Exception as exc:
-                print(f"[Worker {self.worker_id}] ⚠️  Redis save failed: {exc}")
+                print(f"[Worker {self.worker_id}] {indent}⚠️  Redis save failed: {exc}")
 
         # Stream to Kafka
         if self.kafka:
             try:
                 await self.kafka.send_document(doc_data)
             except Exception as exc:
-                print(f"[Worker {self.worker_id}] ⚠️  Kafka send failed: {exc}")
+                print(f"[Worker {self.worker_id}] {indent}⚠️  Kafka send failed: {exc}")
 
-        print(f"[Worker {self.worker_id}] ✅ Saved: {doc.title}")
+        print(f"[Worker {self.worker_id}] {indent}✅ Saved: {doc.title}")
 
     def get_stats(self) -> CrawlerStats:
         """Get worker statistics."""

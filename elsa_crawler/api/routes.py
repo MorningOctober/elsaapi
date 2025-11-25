@@ -14,8 +14,12 @@ from elsa_crawler.models import (
     ApiResponse,
     CrawlerStatus,
     DocumentResponse,
+    SearchDocumentsRequest,
+    SearchHistoryRequest,
+    SearchResponse,
     StartCrawlerRequest,
 )
+from elsa_crawler.storage.qdrant_cleaner import QdrantCleanupService
 from elsa_crawler.storage.redis import RedisStorage
 
 # Global state
@@ -207,4 +211,211 @@ async def get_documents(vin: str) -> DocumentResponse:
     except Exception as exc:
         raise HTTPException(
             status_code=500, detail=f"Failed to retrieve documents: {exc}"
+        ) from exc
+
+
+@router.post("/search/documents")
+async def search_documents(request: SearchDocumentsRequest) -> SearchResponse:
+    """
+    Search documents using RediSearch.
+
+    Args:
+        request: Search parameters
+
+    Returns:
+        Search results with total count
+
+    Raises:
+        HTTPException: If search fails
+    """
+    config = get_config()
+
+    try:
+        redis = RedisStorage(config)
+        await redis.connect()
+
+        result = await redis.search_documents(
+            query=request.query,
+            vin=request.vin,
+            category=request.category,
+            limit=request.limit,
+            offset=request.offset,
+            sort_by=request.sort_by,
+            sort_desc=request.sort_desc,
+        )
+
+        await redis.disconnect()
+
+        return SearchResponse(
+            total=result["total"],
+            results=result["results"],
+            query=request.query,
+            filters={
+                "vin": request.vin,
+                "category": request.category,
+                "sort_by": request.sort_by,
+                "sort_desc": request.sort_desc,
+            },
+        )
+
+    except Exception as exc:
+        raise HTTPException(
+            status_code=500, detail=f"Document search failed: {exc}"
+        ) from exc
+
+
+@router.post("/search/history")
+async def search_history(request: SearchHistoryRequest) -> SearchResponse:
+    """
+    Search vehicle history using RediSearch.
+
+    Args:
+        request: Search parameters
+
+    Returns:
+        Search results with total count
+
+    Raises:
+        HTTPException: If search fails
+    """
+    config = get_config()
+
+    try:
+        redis = RedisStorage(config)
+        await redis.connect()
+
+        result = await redis.search_vehicle_history(
+            vin=request.vin,
+            entry_type=request.entry_type,
+            min_mileage=request.min_mileage,
+            max_mileage=request.max_mileage,
+            workshop=request.workshop,
+            limit=request.limit,
+        )
+
+        await redis.disconnect()
+
+        return SearchResponse(
+            total=result["total"],
+            results=result["results"],
+            query="*",
+            filters={
+                "vin": request.vin,
+                "entry_type": request.entry_type,
+                "min_mileage": request.min_mileage,
+                "max_mileage": request.max_mileage,
+                "workshop": request.workshop,
+            },
+        )
+
+    except Exception as exc:
+        raise HTTPException(
+            status_code=500, detail=f"History search failed: {exc}"
+        ) from exc
+
+
+@router.get("/analytics/workshops")
+async def get_workshop_analytics() -> dict[str, Any]:
+    """
+    Get aggregated statistics by workshop.
+
+    Returns:
+        List of workshops with repair counts
+
+    Raises:
+        HTTPException: If aggregation fails
+    """
+    config = get_config()
+
+    try:
+        redis = RedisStorage(config)
+        await redis.connect()
+
+        aggregations = await redis.aggregate_history_by_workshop()
+
+        await redis.disconnect()
+
+        return {
+            "success": True,
+            "workshops": aggregations,
+            "total": len(aggregations),
+        }
+
+    except Exception as exc:
+        raise HTTPException(
+            status_code=500, detail=f"Workshop analytics failed: {exc}"
+        ) from exc
+
+
+@router.delete("/vin/{vin}/data")
+async def clear_vin_data(vin: str) -> ApiResponse:
+    """
+    Clear all data for a specific VIN from Redis and Qdrant.
+
+    This endpoint performs a comprehensive cleanup:
+    - Deletes all documents from Redis (doc:{vin}:*)
+    - Deletes all metadata (history, fieldsets, etc.)
+    - Deletes all Qdrant collections (elsadocs_{vin}_*)
+
+    Use this before re-crawling a VIN to ensure fresh data, or
+    to manually clean up after testing.
+
+    Args:
+        vin: Vehicle Identification Number (17 characters)
+
+    Returns:
+        Deletion statistics
+
+    Raises:
+        HTTPException: If cleanup fails
+    """
+    config = get_config()
+
+    try:
+        # Validate VIN format
+        if len(vin) != 17:
+            raise HTTPException(
+                status_code=400, detail="VIN must be exactly 17 characters"
+            )
+
+        redis_stats: dict[str, Any] = {}
+        qdrant_stats: dict[str, Any] = {}
+
+        # Clear Redis data
+        redis = RedisStorage(config)
+        await redis.connect()
+        redis_stats = await redis.clear_vin_data(vin)
+        await redis.disconnect()
+
+        # Clear Qdrant collections
+        qdrant = QdrantCleanupService(config)
+        await qdrant.connect()
+        qdrant_stats = await qdrant.clear_vin_collections(vin)
+        await qdrant.disconnect()
+
+        return ApiResponse(
+            success=True,
+            message=f"Successfully cleared all data for VIN {vin}",
+            data={
+                "vin": vin,
+                "redis": {
+                    "documents_deleted": redis_stats.get("documents_deleted", 0),
+                    "metadata_keys_deleted": redis_stats.get(
+                        "metadata_keys_deleted", 0
+                    ),
+                    "total_deleted": redis_stats.get("total_deleted", 0),
+                },
+                "qdrant": {
+                    "collections_deleted": qdrant_stats.get("collections_deleted", 0),
+                    "deleted_collections": qdrant_stats.get("deleted_collections", []),
+                },
+                "errors": qdrant_stats.get("errors", []),
+            },
+        )
+
+    except HTTPException:
+        raise
+    except Exception as exc:
+        raise HTTPException(
+            status_code=500, detail=f"Failed to clear VIN data: {exc}"
         ) from exc
