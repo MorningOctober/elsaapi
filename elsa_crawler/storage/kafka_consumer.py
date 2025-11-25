@@ -14,7 +14,7 @@ from qdrant_client.models import Distance, PointStruct, VectorParams
 from sentence_transformers import SentenceTransformer
 
 from elsa_crawler.config import ElsaConfig
-from elsa_crawler.models import DocumentData
+from elsa_crawler.models import DocumentData, VehicleHistory
 from elsa_crawler.storage.sanitizer import sanitize_html
 
 
@@ -53,8 +53,11 @@ class KafkaQdrantConsumer:
         return "^elsadocs_.*"
 
     @staticmethod
-    def _deserialize_message(message: bytes) -> DocumentData:
-        return DocumentData.model_validate_json(message.decode("utf-8"))
+    def _deserialize_message(message: bytes) -> dict[str, Any]:
+        """Deserialize message to dict (validation happens in consume())."""
+        import json
+
+        return json.loads(message.decode("utf-8"))
 
     @staticmethod
     def _encode_content(model: SentenceTransformer, text: str) -> list[float]:
@@ -143,9 +146,19 @@ class KafkaQdrantConsumer:
         try:
             async for msg in cast(AsyncIterable[Any], self.consumer):
                 try:
-                    # msg.value is already DocumentData from deserializer
-                    doc = cast(DocumentData, msg.value)
-                    await self._process_document(doc)
+                    # Message is already deserialized to dict by value_deserializer
+                    data: dict[str, Any] = msg.value
+
+                    # Check message type and validate
+                    if data.get("type") == "vehicle_history":
+                        # Vehicle history - skip (stored in Redis only, not Qdrant)
+                        vehicle_history = VehicleHistory.model_validate(data)
+                        print(f"⏭️  Skipping vehicle_history for VIN {vehicle_history.vin} (stored in Redis only)")
+                        continue
+                    else:
+                        # Document data - validate and process
+                        doc = DocumentData.model_validate(data)
+                        await self._process_document(doc)
                 except Exception as exc:
                     print(f"⚠️  Error processing message: {exc}")
         except Exception as exc:

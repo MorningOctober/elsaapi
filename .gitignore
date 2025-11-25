@@ -41,3 +41,4 @@ infomedia_tree_dump.json
 state.json
 .playwright-mcp/
 CLAUDE.md
+reindex_qdrant.py

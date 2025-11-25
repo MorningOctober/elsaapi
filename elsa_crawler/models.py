@@ -239,3 +239,87 @@ class ApiResponse(BaseModel):
     success: bool
     message: str
     data: Optional[dict[str, Any]] = None
+
+
+# ============================================================================
+# Vehicle History Models
+# ============================================================================
+
+
+class HistoryEntryBase(BaseModel):
+    """Base model for vehicle history entries."""
+
+    acceptance_date: str = Field(..., description="Annahmetermin")
+    mileage: int = Field(..., description="Laufleistung in km")
+    order_number: str = Field(..., description="Auftrags-Nr")
+
+
+class ServicePlanEntry(HistoryEntryBase):
+    """Digitaler Serviceplan entry."""
+
+    entry_type: Literal["Digitaler Serviceplan"] = "Digitaler Serviceplan"
+    service_proof: Optional[str] = Field(default=None, description="Service-Nachweis")
+    additional_work: list[dict[str, str]] = Field(  # type: ignore[misc]
+        default_factory=list, description="Zusatzarbeiten table"
+    )
+    remarks: list[dict[str, str]] = Field(  # type: ignore[misc]
+        default_factory=list, description="Anmerkungen/Beschreibungen"
+    )
+
+
+class ComplaintEntry(HistoryEntryBase):
+    """Beanstandung (BA) entry."""
+
+    entry_type: Literal["Beanstandung"] = "Beanstandung"
+    ba_id: str = Field(..., description="BA-ID")
+    customer_complaint: Optional[str] = Field(
+        default=None, description="Kundenbeanstandung"
+    )
+    customer_coding: Optional[str] = Field(default=None, description="Kundenkodierung")
+    workshop_finding: Optional[str] = Field(
+        default=None, description="Werkstattfeststellung"
+    )
+    workshop_coding: Optional[str] = Field(
+        default=None, description="Werkstattkodierung"
+    )
+    damage_part: Optional[str] = Field(
+        default=None, description="Schadensbehebendes Ersatzteil"
+    )
+
+
+class InvoiceEntry(HistoryEntryBase):
+    """Rechnung entry."""
+
+    entry_type: Literal["Rechnung"] = "Rechnung"
+    invoice_number: str = Field(..., description="Rechnungs-Nr")
+    remark: Optional[str] = Field(default=None, description="Anmerk (Wartung/Gewährl.)")
+    work_positions: list[dict[str, str]] = Field(  # type: ignore[misc]
+        default_factory=list, description="Arbeitspositionen table"
+    )
+    parts_positions: list[dict[str, str]] = Field(  # type: ignore[misc]
+        default_factory=list, description="Teilepositionen table"
+    )
+
+
+class VehicleHistory(BaseModel):
+    """Complete vehicle history with all entries."""
+
+    vin: str = Field(..., min_length=17, max_length=17, description="Vehicle VIN")
+    extraction_timestamp: float = Field(
+        default_factory=lambda: datetime.now().timestamp()
+    )
+    extraction_status: Literal["complete", "partial"] = Field(
+        default="complete", description="Extraction completion status"
+    )
+    total_entries: int = Field(..., ge=0, description="Total entries found")
+    successful_entries: int = Field(..., ge=0, description="Successfully extracted")
+    failed_entries: int = Field(default=0, ge=0, description="Failed extractions")
+    entries: list[ServicePlanEntry | ComplaintEntry | InvoiceEntry] = Field(  # type: ignore[misc]
+        default_factory=list
+    )
+
+    @field_validator("vin")
+    @classmethod
+    def validate_vin(cls, v: str) -> str:
+        """Validate and normalize VIN."""
+        return v.upper()

@@ -73,6 +73,36 @@ class KafkaProducer:
             self.config.kafka_topic, value=doc.model_dump(), key=key
         )
 
+    async def send_vehicle_history(self, history: dict[str, Any]) -> None:
+        """
+        Send complete vehicle history to Kafka topic.
+
+        Args:
+            history: VehicleHistory model dict
+        """
+        if not self.producer:
+            raise RuntimeError("Kafka producer not connected")
+
+        # Key: VIN:history for partitioning
+        key = f"{history['vin']}:history"
+
+        # Wrap in message envelope
+        message = {
+            "type": "vehicle_history",
+            "vin": history["vin"],
+            "timestamp": history["extraction_timestamp"],
+            "status": history["extraction_status"],
+            "metadata": {
+                "total_entries": history["total_entries"],
+                "successful": history["successful_entries"],
+                "failed": history["failed_entries"],
+            },
+            "entries": history["entries"],
+        }
+
+        # Send to configured topic
+        await self.producer.send(self.config.kafka_topic, value=message, key=key)
+
     def _topic_for_vin(self, vin: Optional[str]) -> str:
         suffix = (vin or "unknown").lower()
         return f"elsadocs_{suffix}"

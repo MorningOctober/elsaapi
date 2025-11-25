@@ -14,6 +14,7 @@ from elsa_crawler.browser.manager import BrowserManager
 from elsa_crawler.config import ElsaConfig
 from elsa_crawler.crawler.worker import CrawlerWorker
 from elsa_crawler.extractors.fieldsets import FieldsetExtractor
+from elsa_crawler.extractors.vehicle_history import VehicleHistoryExtractor
 from elsa_crawler.models import Category, CrawlerStats, Credentials
 from elsa_crawler.storage.kafka_producer import KafkaProducer
 from elsa_crawler.storage.redis import RedisStorage
@@ -102,6 +103,37 @@ class CrawlerOrchestrator:
                 print("✅ Fieldsets cached in Redis")
         except Exception as exc:
             print(f"⚠️  Fieldset extraction failed: {exc}")
+
+        # Extract and cache vehicle history (after fieldsets, before manual section)
+        try:
+            print("\n🚗 Extracting vehicle history...")
+            vehicle_history = await VehicleHistoryExtractor.extract_complete_history(
+                browser_manager, self.vin
+            )
+
+            # Save to Redis
+            if self.redis:
+                await self.redis.save_vehicle_history(
+                    self.vin, vehicle_history.model_dump()
+                )
+                print(
+                    f"✅ Vehicle history cached: {vehicle_history.successful_entries}/{vehicle_history.total_entries} entries"
+                )
+
+            # Stream to Kafka
+            if self.kafka:
+                await self.kafka.send_vehicle_history(vehicle_history.model_dump())
+                print("✅ Vehicle history sent to Kafka")
+
+            # Log extraction status
+            if vehicle_history.extraction_status == "partial":
+                print(
+                    f"⚠️  Partial extraction: {vehicle_history.failed_entries} entries failed"
+                )
+
+        except Exception as exc:
+            print(f"⚠️  Vehicle history extraction failed: {exc}")
+            # Non-blocking: continue with manual section extraction
 
         await browser_manager.navigate_manual_section()
 

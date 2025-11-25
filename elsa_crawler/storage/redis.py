@@ -67,6 +67,26 @@ class RedisStorage:
         # Add to VIN index set
         await cast(Awaitable[int], self.client.sadd(f"vin:{doc.vin}:docs", key))
 
+    async def save_vehicle_history(self, vin: str, history: dict[str, Any]) -> None:
+        """
+        Save vehicle history for a VIN.
+
+        Args:
+            vin: Vehicle VIN
+            history: VehicleHistory dict
+
+        Stored at: vin:{vin}:history (JSON, 30-day TTL)
+        """
+        if not self.client:
+            raise RuntimeError("Redis client not connected")
+
+        key = f"vin:{vin}:history"
+        await self.client.set(
+            key,
+            json.dumps(history, ensure_ascii=False),
+            ex=86400 * 30,  # 30 days TTL
+        )
+
     async def save_fieldsets(
         self,
         vin: str,
